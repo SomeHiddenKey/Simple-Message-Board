@@ -1,6 +1,6 @@
 -module(server_users).
 
--export([]).
+-export([initialize/0, initialize_with/1, server_actor/1]).
 
 initialize() ->
   	initialize_with(dict:new()). 
@@ -9,14 +9,14 @@ initialize() ->
 % Useful for benchmarking.
 initialize_with(Users) ->
 	ServerPid = spawn_link(?MODULE, server_actor, [Users]),
-    catch unregister(server_actor),
-    register(server_actor, ServerPid),
+    catch unregister(server_users),
+    register(server_users, ServerPid),
     ServerPid.
 
 server_actor(Users) ->
     receive
         {Sender, register_user, UserName} ->
-            NewUsers = dict:store(UserName, create_user(UserName), Users),
+            NewUsers = dict:store(UserName, create_user(), Users),
             Sender ! {self(), user_registered},
             server_actor(NewUsers);
 
@@ -30,7 +30,7 @@ server_actor(Users) ->
             server_actor(NewUsers)
     end.
 
-	create_user(UserName) ->
+	create_user() ->
 		{user, sets:new()}.
 
 	get_user(Users, UserName) ->
