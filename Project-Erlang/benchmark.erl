@@ -110,13 +110,14 @@ initialize_server() ->
         % Random subscriptions.
         Subscriptions = [pick_random(UserNames) || _ <- lists:seq(1, NumberOfSubscriptions)],
         % Random messages.
-        Messages = [generate_message(Name, I) || I <- lists:seq(1, NumberOfMessages)],
-        User = {user, Name, sets:from_list(Subscriptions), Messages},
+        User = {user, sets:from_list(Subscriptions)},
         {Name, User} % {key, value} for dict.
         end,
         UserNames)),
-    ServerPid = server_centralized:initialize_with(Users),
-    {ServerPid, UserNames}.
+    Messages = lists:keymap(fun(Name) -> [generate_message(Name, I) || I <- lists:seq(1, NumberOfMessages)] end, Users),
+    MessageServerPid = server_messages:initialize_with(Messages),
+    UserServerPid = server_user:initialize_with(Users),
+    {MessageServerPid, UserServerPid, UserNames}.
 
 % Pick a random element from a list.
 pick_random(List) ->
@@ -129,23 +130,37 @@ generate_message(UserName, I) ->
 
 % Get timeline of 10000 users (repeated 30 times).
 test_timeline() ->
-    {ServerPid, UserName} = initialize_server(),
+    {MessageServerPid, UserServerPid, UserNames} = initialize_server(),
     run_benchmark("timeline",
         fun () ->
             lists:foreach(fun (_) ->
-                server:get_timeline(ServerPid, pick_random(UserName))
+                server:get_timeline(MessageServerPid, pick_random(UserNames))
             end,
             lists:seq(1, 10000))
         end,
         30).
 
+test_timeline_split(nodes_count) ->
+    {MessageServerPid, _, UserNames} = initialize_server(),
+    test_split_runners(fun (_) ->
+        server:get_timeline(MessageServerPid, pick_random(UserNames))
+    end, nodes_count, 10000/nodes_count).
+
+test_split_runners(F, nodes_count, sequences_count) ->
+    runners = [build_split_runner(fun () ->
+        lists:foreach(F, lists:seq(1, sequences_count)) end) || _ <- lists:seq(1, nodes_count)],
+    run_benchmark(lists:flatten(io_lib:format("timeline_split_~p_~p", [nodes_count,sequences_count])),runners,30).
+
+build_split_runner(Fun) -> 
+    spawn(?MODULE, fun () -> receive {start} -> Fun end end).
+
 % Send message for 10000 users.
 test_send_message() ->
-    {ServerPid, UserName} = initialize_server(),
+    {MessageServerPid, UserServerPid, UserNames} = initialize_server(),
     run_benchmark("send_message",
         fun () ->
             lists:foreach(fun (_) ->
-                server:send_message(ServerPid, pick_random(UserName), "Test")
+                server:send_message(MessageServerPid, pick_random(UserNames), "Test")
             end,
             lists:seq(1, 10000))
         end,

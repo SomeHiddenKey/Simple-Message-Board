@@ -66,8 +66,7 @@ send_message(ServerPid, UserName, MessageText) ->
 get_timeline(ServerPid, UserName) ->
     ServerPid ! {self(), get_timeline, UserName},
     receive
-        {_ResponsePid, timeline, UserName, Timeline} ->
-            Timeline
+        {_ResponsePid, timeline, Timeline} -> k_mergesort(Timeline)
     end.
 
 % Request the profile of a user.
@@ -79,3 +78,11 @@ get_profile(ServerPid, UserName) ->
         {_ResponsePid, profile, UserName, Messages} ->
             Messages
     end.
+
+k_mergesort([L1,L2|Rest]) -> 
+    k_mergesort(
+        [lists:umerge(fun({message,_,_,TimeA},{message,_,_,TimeB}) -> TimeA<TimeB end, L1,L2)|
+        k_mergesort(Rest)]
+    );
+k_mergesort([L1|[]]) -> L1;
+k_mergesort([]) -> [].
